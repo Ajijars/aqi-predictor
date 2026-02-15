@@ -10,6 +10,21 @@ import requests
 import os
 import glob
 
+# ================= LIVE DATA MEMORY =================
+HISTORY_CSV = "live_history.csv"
+
+def append_live_history(record):
+    df = pd.DataFrame([record])
+    if os.path.exists(HISTORY_CSV):
+        df.to_csv(HISTORY_CSV, mode='a', header=False, index=False)
+    else:
+        df.to_csv(HISTORY_CSV, index=False)
+
+def load_live_history():
+    if os.path.exists(HISTORY_CSV):
+        return pd.read_csv(HISTORY_CSV, parse_dates=['datetime'])
+    return pd.DataFrame(columns=['datetime','AQI'])
+
 # Streamlit page config
 st.set_page_config(page_title="Delhi AQI Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
@@ -416,20 +431,23 @@ def get_health_advice(aqi_value):
 
 # 1️⃣ Fetch LIVE city AQI (avg of all stations + pollutants)
 live = fetch_live_waqi_city(WAQI_TOKEN)
+# Save live reading into memory
+if live:
+    append_live_history({
+        "datetime": live["datetime"],
+        "AQI": live["AQI"]
+    })
+
 
 
 # 3️⃣ Load historical dataset
 historical_df = load_historical_data_from_folder()
 
-# 4️⃣ Inject current LIVE AQI as latest observation
-if live:
-    live_row = pd.DataFrame([{
-        "datetime": live["datetime"],
-        "AQI": live["AQI"]
-    }])
-    combined_df = pd.concat([historical_df, live_row], ignore_index=True)
-else:
-    combined_df = historical_df.copy()
+# 4️⃣ Merge historical + accumulated live history
+live_history_df = load_live_history()
+
+combined_df = pd.concat([historical_df, live_history_df], ignore_index=True)
+
 
 
 combined_df["datetime"] = pd.to_datetime(combined_df["datetime"], utc=True).dt.tz_localize(None)
@@ -450,16 +468,13 @@ combined_df = combined_df.sort_values("datetime").reset_index(drop=True)
 
 recent_df = combined_df.tail(24).copy()
 
-# create proper hourly timeline
-recent_df["datetime"] = pd.date_range(
-    end=recent_df["datetime"].iloc[-1],
-    periods=len(recent_df),
-    freq="H"
-)
+
 
 
 # 7️⃣ Forecast next 24h
+trained_model, _ = train_model_from_history(combined_df)
 future_df = predict_next_24_hours(combined_df, trained_model)
+
 
 # 8️⃣ Current AQI MUST be LIVE
 current_aqi = float(live["AQI"]) if live else float(recent_df.iloc[-1]["AQI"])
