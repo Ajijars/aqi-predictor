@@ -469,12 +469,19 @@ if len(combined_df) < 50:
 
 
 
+# 6️⃣ TRUE LAST 24 HOURS FILTER (REAL TIME WINDOW)
 
-# 6️⃣ TRUE LAST 24 HOURS FILTER (NOT LAST 24 ROWS)
-# ALWAYS take last 24 continuous hours
 combined_df = combined_df.sort_values("datetime").reset_index(drop=True)
 
-recent_df = combined_df.tail(24).copy()
+now = combined_df["datetime"].max()
+last_24h_time = now - timedelta(hours=24)
+
+recent_df = combined_df[
+    combined_df["datetime"] >= last_24h_time
+].copy()
+
+recent_df = recent_df.sort_values("datetime").reset_index(drop=True)
+
 
 
 
