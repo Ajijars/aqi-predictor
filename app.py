@@ -279,6 +279,11 @@ def train_model_from_history(df):
     df['Lag_24'] = df['AQI'].shift(24)
     df['Rolling_6'] = df['AQI'].rolling(6,min_periods=1).mean()
     df['Rolling_24'] = df['AQI'].rolling(24,min_periods=1).mean()
+    # ===== MOMENTUM FEATURES (MOST IMPORTANT) =====
+    df["Trend_1h"] = df["AQI"] - df["AQI"].shift(1)
+    df["Trend_3h"] = df["AQI"] - df["AQI"].shift(3)
+    df["Trend_6h"] = df["AQI"] - df["AQI"].shift(6)
+
 
     # ⭐ MOST IMPORTANT — learn CHANGE not value
     df["Target"] = df["AQI"].shift(-1) - df["AQI"]
@@ -288,7 +293,12 @@ def train_model_from_history(df):
     if df.shape[0] < 10:
         return None, None
 
-    features = ['Hour','Day','Month','DayOfWeek','Lag_1','Lag_3','Lag_24','Rolling_6','Rolling_24']
+    features = [
+    'Hour','Day','Month','DayOfWeek',
+    'Lag_1','Lag_3','Lag_24',
+    'Rolling_6','Rolling_24',
+    'Trend_1h','Trend_3h','Trend_6h'
+]
     X = df[features]
     y = df['Target']   # ✅ FIXED
 
@@ -331,6 +341,9 @@ def predict_next_24_hours(history_df, trained_model):
 
         Rolling_6 = working_df.tail(6)['AQI'].mean()
         Rolling_24 = working_df.tail(24)['AQI'].mean()
+        Trend_1h = Lag_1 - working_df.iloc[-2]['AQI']
+        Trend_3h = Lag_1 - Lag_3
+        Trend_6h = Lag_1 - working_df.iloc[-6]['AQI']
 
         input_features = pd.DataFrame({
             'Hour':[future_time.hour],
@@ -341,7 +354,11 @@ def predict_next_24_hours(history_df, trained_model):
             'Lag_3':[Lag_3],
             'Lag_24':[Lag_24],
             'Rolling_6':[Rolling_6],
-            'Rolling_24':[Rolling_24]
+            'Rolling_24':[Rolling_24],
+            'Trend_1h':[Trend_1h],
+            'Trend_3h':[Trend_3h],
+            'Trend_6h':[Trend_6h]
+
         })
 
         # ⭐ model predicts CHANGE
