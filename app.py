@@ -445,22 +445,18 @@ if len(combined_df) < 50:
 
 
 # 6️⃣ TRUE LAST 24 HOURS FILTER (NOT LAST 24 ROWS)
-now = datetime.now()
-last_24h_time = now - timedelta(hours=24)
+# ALWAYS take last 24 continuous hours
+combined_df = combined_df.sort_values("datetime").reset_index(drop=True)
 
-recent_df = combined_df[combined_df["datetime"] >= last_24h_time].copy()
+recent_df = combined_df.tail(24).copy()
 
-# If live history not enough, use last 24 records instead
-if len(recent_df) < 6:
-    recent_df = combined_df.tail(24).copy()
+# create proper hourly timeline
+recent_df["datetime"] = pd.date_range(
+    end=recent_df["datetime"].iloc[-1],
+    periods=len(recent_df),
+    freq="H"
+)
 
-
-# If data missing, fallback to last 48h to avoid empty charts
-if len(recent_df) < 6:
-    last_48h_time = now - timedelta(hours=48)
-    recent_df = combined_df[combined_df["datetime"] >= last_48h_time].copy()
-
-recent_df = recent_df.sort_values("datetime").reset_index(drop=True)
 
 # 7️⃣ Forecast next 24h
 future_df = predict_next_24_hours(combined_df, trained_model)
