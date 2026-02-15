@@ -260,40 +260,57 @@ def load_historical_data_from_folder():
     #st.success(f"Loaded {len(combined)} hourly AQI records from 2025 dataset")
 
     return combined
-
 def train_model_from_history(df):
-    # Requires at least ~50 rows to train reasonably
+
     if df.shape[0] < 30:
         return None, None
+
     df = df.sort_values('datetime').reset_index(drop=True)
+
+    # Time features
     df['Hour'] = df['datetime'].dt.hour
     df['Day'] = df['datetime'].dt.day
     df['Month'] = df['datetime'].dt.month
     df['DayOfWeek'] = df['datetime'].dt.weekday
+
+    # Lag features
     df['Lag_1'] = df['AQI'].shift(1)
     df['Lag_3'] = df['AQI'].shift(3)
     df['Lag_24'] = df['AQI'].shift(24)
     df['Rolling_6'] = df['AQI'].rolling(6,min_periods=1).mean()
     df['Rolling_24'] = df['AQI'].rolling(24,min_periods=1).mean()
+
+    # ⭐ MOST IMPORTANT — learn CHANGE not value
+    df["Target"] = df["AQI"].shift(-1) - df["AQI"]
+
     df = df.dropna().reset_index(drop=True)
+
     if df.shape[0] < 10:
         return None, None
+
     features = ['Hour','Day','Month','DayOfWeek','Lag_1','Lag_3','Lag_24','Rolling_6','Rolling_24']
     X = df[features]
-    y = df['AQI']
+    y = df['Target']   # ✅ FIXED
+
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-    model_local = GradientBoostingRegressor(n_estimators=200, learning_rate=0.05, max_depth=3, random_state=42)
+
+    model_local = GradientBoostingRegressor(
+        n_estimators=200,
+        learning_rate=0.05,
+        max_depth=3,
+        random_state=42
+    )
+
     model_local.fit(X_train, y_train)
+
     preds = model_local.predict(X_test)
     mae = mean_absolute_error(y_test, preds)
-    # Save model for reuse
-    
+
     return model_local, mae
 
 def predict_next_24_hours(history_df, trained_model):
 
     if trained_model is None or len(history_df) < 30:
-
         return None
 
     df = history_df.sort_values('datetime').copy().reset_index(drop=True)
@@ -303,19 +320,14 @@ def predict_next_24_hours(history_df, trained_model):
 
     working_df = df.copy()
 
-# Anchor last value to live AQI (prevents drift)
-    working_df.loc[working_df.index[-1], 'AQI'] = df.iloc[-1]['AQI']
-
-
     for i in range(24):
 
         future_time = working_df.iloc[-1]['datetime'] + timedelta(hours=1)
 
-        # REAL historical lag logic
+        # lag features
         Lag_1 = working_df.iloc[-1]['AQI']
         Lag_3 = working_df.iloc[-3]['AQI']
         Lag_24 = working_df.iloc[-24]['AQI']
-
 
         Rolling_6 = working_df.tail(6)['AQI'].mean()
         Rolling_24 = working_df.tail(24)['AQI'].mean()
@@ -332,20 +344,23 @@ def predict_next_24_hours(history_df, trained_model):
             'Rolling_24':[Rolling_24]
         })
 
-        pred = trained_model.predict(input_features)[0]
-        pred = max(0, min(500, pred))
+        # ⭐ model predicts CHANGE
+        change = trained_model.predict(input_features)[0]
 
-        new_row = pd.DataFrame({'datetime':[future_time],'AQI':[pred]})
+        # ⭐ convert change -> actual AQI
+        next_aqi = Lag_1 + change
+        next_aqi = max(0, min(500, next_aqi))
+
+        new_row = pd.DataFrame({'datetime':[future_time],'AQI':[next_aqi]})
         working_df = pd.concat([working_df, new_row], ignore_index=True)
 
         future_times.append(future_time)
-        future_preds.append(pred)
+        future_preds.append(next_aqi)
 
     return pd.DataFrame({
         'datetime': future_times,
         'predicted_AQI': future_preds
     })
-
 
 
 # Note: synthetic data functions removed; app uses live WAQI data only.
