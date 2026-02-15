@@ -1,3 +1,5 @@
+APP_VERSION = "1.0.1"
+
 import streamlit as st
 import pandas as pd
 import numpy as np
