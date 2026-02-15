@@ -291,66 +291,56 @@ def train_model_from_history(df):
         pickle.dump(model_local, f)
     return model_local, mae
 
-
 def predict_next_24_hours(history_df, trained_model):
-    """Predict next 24 hours using trained model or return None if model is unavailable"""
-    if trained_model is None:
+
+    if trained_model is None or len(history_df) < 48:
         return None
-        
-    try:
-        df = history_df.sort_values('datetime').copy()
-        
-        if df.shape[0] < 24:
-            return None
 
-        df['Hour'] = df['datetime'].dt.hour
-        df['Day'] = df['datetime'].dt.day
-        df['Month'] = df['datetime'].dt.month
-        df['DayOfWeek'] = df['datetime'].dt.weekday
+    df = history_df.sort_values('datetime').copy().reset_index(drop=True)
 
-        future_preds = []
-        last_rows = df.tail(24).copy().reset_index(drop=True)
+    future_preds = []
+    future_times = []
 
-        for i in range(1,25):
-            future_time = last_rows.iloc[-1]['datetime'] + timedelta(hours=1)
+    working_df = df.copy()
 
-            Lag_1 = last_rows.iloc[-1]['AQI']
-            Lag_3 = last_rows.iloc[-3]['AQI'] if len(last_rows) >= 3 else last_rows.iloc[0]['AQI']
-            Lag_24 = last_rows.iloc[0]['AQI']
-            Rolling_6 = last_rows.tail(6)['AQI'].mean()
-            Rolling_24 = last_rows.tail(24)['AQI'].mean()
+    for i in range(24):
 
-            input_features = pd.DataFrame({
-                'Hour':[future_time.hour],
-                'Day':[future_time.day],
-                'Month':[future_time.month],
-                'DayOfWeek':[future_time.weekday()],
-                'Lag_1':[Lag_1],
-                'Lag_3':[Lag_3],
-                'Lag_24':[Lag_24],
-                'Rolling_6':[Rolling_6],
-                'Rolling_24':[Rolling_24]
-            })
+        future_time = working_df.iloc[-1]['datetime'] + timedelta(hours=1)
 
-            pred = trained_model.predict(input_features)[0]
-            pred = max(0, min(500, pred))
+        # REAL historical lag logic
+        Lag_1 = working_df.iloc[-1]['AQI']
+        Lag_3 = working_df.iloc[-3]['AQI']
+        Lag_24 = df.iloc[-24]['AQI']   # critical fix
 
-            new_row = pd.DataFrame({
-                'datetime':[future_time],
-                'AQI':[pred]
-            })
+        Rolling_6 = working_df.tail(6)['AQI'].mean()
+        Rolling_24 = working_df.tail(24)['AQI'].mean()
 
-            last_rows = pd.concat([last_rows, new_row], ignore_index=True)
-            future_preds.append(pred)
-
-        future_times = [df.iloc[-1]['datetime'] + timedelta(hours=i) for i in range(1,25)]
-
-        return pd.DataFrame({
-            'datetime':future_times,
-            'predicted_AQI':future_preds
+        input_features = pd.DataFrame({
+            'Hour':[future_time.hour],
+            'Day':[future_time.day],
+            'Month':[future_time.month],
+            'DayOfWeek':[future_time.weekday()],
+            'Lag_1':[Lag_1],
+            'Lag_3':[Lag_3],
+            'Lag_24':[Lag_24],
+            'Rolling_6':[Rolling_6],
+            'Rolling_24':[Rolling_24]
         })
-    except Exception as e:
-        return None
+
+        pred = trained_model.predict(input_features)[0]
+        pred = max(0, min(500, pred))
+
+        new_row = pd.DataFrame({'datetime':[future_time],'AQI':[pred]})
+        working_df = pd.concat([working_df, new_row], ignore_index=True)
+
+        future_times.append(future_time)
+        future_preds.append(pred)
+
+    return pd.DataFrame({
+        'datetime': future_times,
+        'predicted_AQI': future_preds
+    })
+
 # ===== LOAD TRAINED MODEL =====
 @st.cache_resource
 def load_model():
