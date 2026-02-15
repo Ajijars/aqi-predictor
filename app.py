@@ -257,7 +257,7 @@ def load_historical_data_from_folder():
     combined = pd.concat(all_rows)
     combined = combined.sort_values("datetime").reset_index(drop=True)
 
-    st.success(f"Loaded {len(combined)} hourly AQI records from 2025 dataset")
+    #st.success(f"Loaded {len(combined)} hourly AQI records from 2025 dataset")
 
     return combined
 
