@@ -3,7 +3,6 @@ APP_VERSION = "1.0.1"
 import streamlit as st
 import pandas as pd
 import numpy as np
-import pickle
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
@@ -20,20 +19,19 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error
 
 
-# ================= LIVE DATA MEMORY =================
-HISTORY_CSV = "live_history.csv"
+# ===== STREAMLIT CLOUD LIVE MEMORY =====
+if "live_memory" not in st.session_state:
+    st.session_state.live_memory = pd.DataFrame(columns=["datetime","AQI"])
 
 def append_live_history(record):
-    df = pd.DataFrame([record])
-    if os.path.exists(HISTORY_CSV):
-        df.to_csv(HISTORY_CSV, mode='a', header=False, index=False)
-    else:
-        df.to_csv(HISTORY_CSV, index=False)
+    st.session_state.live_memory = pd.concat(
+        [st.session_state.live_memory, pd.DataFrame([record])],
+        ignore_index=True
+    ).drop_duplicates("datetime").sort_values("datetime")
 
 def load_live_history():
-    if os.path.exists(HISTORY_CSV):
-        return pd.read_csv(HISTORY_CSV, parse_dates=['datetime'])
-    return pd.DataFrame(columns=['datetime','AQI'])
+    return st.session_state.live_memory.copy()
+
 
 # Streamlit page config
 st.set_page_config(page_title="Delhi AQI Dashboard", layout="wide", initial_sidebar_state="collapsed")
@@ -289,13 +287,13 @@ def train_model_from_history(df):
     preds = model_local.predict(X_test)
     mae = mean_absolute_error(y_test, preds)
     # Save model for reuse
-    with open('model.pkl', 'wb') as f:
-        pickle.dump(model_local, f)
+    
     return model_local, mae
 
 def predict_next_24_hours(history_df, trained_model):
 
-    if trained_model is None or len(history_df) < 48:
+    if trained_model is None or len(history_df) < 30:
+
         return None
 
     df = history_df.sort_values('datetime').copy().reset_index(drop=True)
@@ -348,21 +346,7 @@ def predict_next_24_hours(history_df, trained_model):
         'predicted_AQI': future_preds
     })
 
-# ===== LOAD TRAINED MODEL =====
-@st.cache_resource
-def load_model():
-    import os, pickle
-    BASE_DIR = os.path.dirname(__file__)
-    model_path = os.path.join(BASE_DIR, "model.pkl")
 
-    if not os.path.exists(model_path):
-        st.error("model.pkl missing in repository!")
-        st.stop()
-
-    with open(model_path, "rb") as f:
-        return pickle.load(f)
-
-trained_model = load_model()
 
 # Note: synthetic data functions removed; app uses live WAQI data only.
 
@@ -483,9 +467,16 @@ recent_df = recent_df.sort_values("datetime").reset_index(drop=True)
 
 
 
-# 7️⃣ Forecast next 24h
+# 7️⃣ Train model using ALL real data (historical + live)
+trained_model, mae = train_model_from_history(combined_df)
 
-future_df = predict_next_24_hours(recent_df, trained_model)
+if trained_model is None:
+    st.error("Model is learning... Not enough real data yet.")
+    st.stop()
+
+# Predict using latest real history
+future_df = predict_next_24_hours(combined_df, trained_model)
+
 
 
 # 8️⃣ Current AQI MUST be LIVE
