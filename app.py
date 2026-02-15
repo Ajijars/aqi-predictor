@@ -441,7 +441,7 @@ if len(combined_df) < 50:
     st.warning("Collecting live data... come back later 🙂")
     st.stop()
 
-trained_model = model
+
 
 
 # 6️⃣ TRUE LAST 24 HOURS FILTER (NOT LAST 24 ROWS)
