@@ -305,6 +305,10 @@ def predict_next_24_hours(history_df, trained_model):
 
     working_df = df.copy()
 
+# Anchor last value to live AQI (prevents drift)
+    working_df.loc[working_df.index[-1], 'AQI'] = df.iloc[-1]['AQI']
+
+
     for i in range(24):
 
         future_time = working_df.iloc[-1]['datetime'] + timedelta(hours=1)
@@ -312,7 +316,8 @@ def predict_next_24_hours(history_df, trained_model):
         # REAL historical lag logic
         Lag_1 = working_df.iloc[-1]['AQI']
         Lag_3 = working_df.iloc[-3]['AQI']
-        Lag_24 = df.iloc[-24]['AQI']   # critical fix
+        Lag_24 = working_df.iloc[-24]['AQI']
+
 
         Rolling_6 = working_df.tail(6)['AQI'].mean()
         Rolling_24 = working_df.tail(24)['AQI'].mean()
@@ -479,8 +484,8 @@ recent_df = recent_df.sort_values("datetime").reset_index(drop=True)
 
 
 # 7️⃣ Forecast next 24h
-trained_model, _ = train_model_from_history(combined_df)
-future_df = predict_next_24_hours(combined_df, trained_model)
+
+future_df = predict_next_24_hours(recent_df, trained_model)
 
 
 # 8️⃣ Current AQI MUST be LIVE
