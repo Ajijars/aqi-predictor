@@ -450,6 +450,11 @@ last_24h_time = now - timedelta(hours=24)
 
 recent_df = combined_df[combined_df["datetime"] >= last_24h_time].copy()
 
+# If live history not enough, use last 24 records instead
+if len(recent_df) < 6:
+    recent_df = combined_df.tail(24).copy()
+
+
 # If data missing, fallback to last 48h to avoid empty charts
 if len(recent_df) < 6:
     last_48h_time = now - timedelta(hours=48)
