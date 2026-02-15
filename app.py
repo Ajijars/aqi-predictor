@@ -328,14 +328,21 @@ def predict_next_24_hours(history_df, trained_model):
         })
     except Exception as e:
         return None
-
+# ===== LOAD TRAINED MODEL =====
 @st.cache_resource
 def load_model():
     import os, pickle
     BASE_DIR = os.path.dirname(__file__)
     model_path = os.path.join(BASE_DIR, "model.pkl")
-    return pickle.load(open(model_path, "rb"))
 
+    if not os.path.exists(model_path):
+        st.error("model.pkl missing in repository!")
+        st.stop()
+
+    with open(model_path, "rb") as f:
+        return pickle.load(f)
+
+trained_model = load_model()
 
 # Note: synthetic data functions removed; app uses live WAQI data only.
 
